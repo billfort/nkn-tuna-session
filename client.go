@@ -119,6 +119,9 @@ func (c *TunaSessionClient) newTunaExit(i int) (*tuna.TunaExit, error) {
 		return nil, err
 	}
 
+	// FXB
+	fmt.Printf("newTunaExit port %v\n", port)
+
 	service := tuna.Service{
 		Name: "session",
 		TCP:  []uint32{uint32(port)},
@@ -182,6 +185,9 @@ func (c *TunaSessionClient) Listen(addrsRe *nkngomobile.StringArray) error {
 		if err != nil {
 			return err
 		}
+
+		// FXB
+		fmt.Printf("listeners[%v] addr %v\n", i, listeners[i].Addr().String())
 	}
 	c.listeners = listeners
 
@@ -195,6 +201,9 @@ func (c *TunaSessionClient) Listen(addrsRe *nkngomobile.StringArray) error {
 
 		go func(te *tuna.TunaExit) {
 			<-te.OnConnect.C
+			// FXB
+			fmt.Printf("te: %+v\n", te)
+
 			select {
 			case connected <- struct{}{}:
 			default:
@@ -291,6 +300,8 @@ func (c *TunaSessionClient) getPubAddrs(includePrice bool) *PubAddrs {
 			addr.OutPrice = exitToEntryPrice.String()
 		}
 		addrs = append(addrs, addr)
+		// FXB
+		fmt.Printf("pub addrs: %+v \n", addr)
 	}
 	return &PubAddrs{Addrs: addrs}
 }
@@ -343,6 +354,8 @@ func (c *TunaSessionClient) listenNet(i int) {
 			time.Sleep(time.Second)
 			continue
 		}
+		// FXB
+		fmt.Printf("listenNet got a conn, local: %v, remote: %v\n", netConn.LocalAddr(), netConn.RemoteAddr())
 
 		conn := newConn(netConn)
 
@@ -406,6 +419,8 @@ func (c *TunaSessionClient) listenNet(i int) {
 				c.Unlock()
 				return
 			}
+			// FXB
+			fmt.Printf("session key %v add conn %v\n", sessKey, i)
 			c.sessionConns[sessKey][connID(i)] = conn
 			c.Unlock()
 
@@ -533,6 +548,9 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 				log.Printf("Dial error: %v", err)
 				return
 			}
+
+			// FXB
+			fmt.Printf("DialWithConfig new conn local %v, remote %v\n", netConn.LocalAddr(), netConn.RemoteAddr())
 
 			conn := newConn(netConn)
 
@@ -696,7 +714,7 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		conn := c.sessionConns[sessKey][connID]
 		c.RUnlock()
 		if conn == nil {
-			return fmt.Errorf("conn %s is nil", connID)
+			return fmt.Errorf("TunaSessionClient.newSession ncp.NewSession sendWith, conn %s is nil", connID)
 		}
 		buf, err := c.encode(buf, remoteAddr)
 		if err != nil {
@@ -742,6 +760,9 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 	c.Unlock()
 
 	defer func() {
+		// FXB
+		fmt.Printf("conn local %v, remote %v closed\n", conn.LocalAddr(), conn.RemoteAddr())
+
 		c.Lock()
 		c.connCount[sessKey]--
 		shouldClose := c.connCount[sessKey] == 0
@@ -762,6 +783,9 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 		err := c.handleMsg(conn, sess, i)
 		if err != nil {
 			if err == io.EOF || err == ncp.ErrSessionClosed || sess.IsClosed() {
+				// FXB
+				fmt.Printf("handleMsg err %v\n", err)
+
 				return
 			}
 			select {
@@ -788,6 +812,9 @@ func (c *TunaSessionClient) removeClosedSessions() {
 		c.Lock()
 		for sessKey, sess := range c.sessions {
 			if sess.IsClosed() {
+				// FXB
+				fmt.Printf("session %v is closed, len of sessionConns is %v\n", sessKey, len(c.sessionConns[sessKey]))
+
 				for _, conn := range c.sessionConns[sessKey] {
 					conn.Close()
 				}
