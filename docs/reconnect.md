@@ -32,7 +32,7 @@ if (!session.IsClosed() && err == IO.EOF) {
 }
 ```
 
-** Creating a New Connection
+## Creating a New Connection
 
 - Tuna Session Listener
   A Tuna Session Listener starts a `tunaExit`, and `tunaExit` starts `StartReverse(true)`.
@@ -75,7 +75,7 @@ netConn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pubAddrs.Add
 
 If an NCP session has only one connection, it is usually closed when that connection is closed. If a new connection is created to replace the old one, a new NCP session must also be established.
 
-### Keep session status consistance
+## Keep session status consistance
 
 A Tuna Session has two endpoints: Listener and Dialer. Each endpoint has the following data structures to maintain the session's status:
 
