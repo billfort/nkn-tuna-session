@@ -30,6 +30,11 @@ if (!session.IsClosed() && err == IO.EOF) {
     // The connection is disconnected exceptionally
     // Create a new connection
 }
+
+if strings.Contains(err.Error(), "use of closed network connection") {
+    te.Close()
+    return
+}
 ```
 
 ## Creating a New Connection

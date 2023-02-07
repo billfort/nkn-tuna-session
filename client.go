@@ -202,7 +202,7 @@ func (c *TunaSessionClient) Listen(addrsRe *nkngomobile.StringArray) error {
 		go func(te *tuna.TunaExit) {
 			<-te.OnConnect.C
 			// FXB
-			fmt.Printf("te: %+v\n", te)
+			// fmt.Printf("te: %+v\n", te)
 
 			select {
 			case connected <- struct{}{}:
@@ -355,7 +355,7 @@ func (c *TunaSessionClient) listenNet(i int) {
 			continue
 		}
 		// FXB
-		fmt.Printf("listenNet got a conn, local: %v, remote: %v\n", netConn.LocalAddr(), netConn.RemoteAddr())
+		fmt.Printf("listenNet got a conn %v, local: %v, remote: %v\n", i, netConn.LocalAddr(), netConn.RemoteAddr())
 
 		conn := newConn(netConn)
 
@@ -556,7 +556,7 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 
 			err = writeMessage(conn, []byte(c.addr.String()), time.Duration(config.DialTimeout)*time.Millisecond)
 			if err != nil {
-				log.Printf("Write message error: %v", err)
+				log.Printf("Conn %v Write message error: %v\n", i, err)
 				conn.Close()
 				return
 			}
@@ -580,7 +580,7 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 
 			err = writeMessage(conn, buf, time.Duration(config.DialTimeout)*time.Millisecond)
 			if err != nil {
-				log.Printf("Write message error: %v", err)
+				log.Printf("Conn %v write message error: %v", i, err)
 				conn.Close()
 				return
 			}
@@ -633,7 +633,7 @@ func (c *TunaSessionClient) AcceptSession() (*ncp.Session, error) {
 		case session := <-c.acceptSession:
 			err := session.Accept()
 			if err != nil {
-				log.Println("Accept error:", err)
+				log.Printf("TunaSessionClient.AcceptSession Accept error:%v\n", err)
 				continue
 			}
 			return session, nil
@@ -714,7 +714,7 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		conn := c.sessionConns[sessKey][connID]
 		c.RUnlock()
 		if conn == nil {
-			return fmt.Errorf("TunaSessionClient.newSession ncp.NewSession sendWith, conn %s is nil", connID)
+			return fmt.Errorf("TunaSessionClient.newSession sendWith, conn %s is nil", connID)
 		}
 		buf, err := c.encode(buf, remoteAddr)
 		if err != nil {
@@ -722,7 +722,7 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		}
 		err = writeMessage(conn, buf, writeTimeout)
 		if err != nil {
-			log.Println("Write message error:", err)
+			log.Printf("Ncp.session conn %v Write message error:%v\n", connID, err)
 			conn.Close()
 			return ncp.ErrConnClosed
 		}
@@ -784,7 +784,7 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 		if err != nil {
 			if err == io.EOF || err == ncp.ErrSessionClosed || sess.IsClosed() {
 				// FXB
-				fmt.Printf("handleMsg err %v\n", err)
+				fmt.Printf("conn %v handleMsg err %v\n", i, err)
 
 				return
 			}
@@ -826,4 +826,12 @@ func (c *TunaSessionClient) removeClosedSessions() {
 		}
 		c.Unlock()
 	}
+}
+
+// FXB
+func (c *TunaSessionClient) GetSessions() map[string]*ncp.Session {
+	return c.sessions
+}
+func (c *TunaSessionClient) GetConns(sessKey string) map[string]*Conn {
+	return c.sessionConns[sessKey]
 }
