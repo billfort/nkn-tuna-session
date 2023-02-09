@@ -7,30 +7,37 @@ import (
 	ts "github.com/nknorg/nkn-tuna-session"
 )
 
-func TestMain(m *testing.M) {
-	bytesToSend := 8 << 20
-	var listenSess, dialSess *ts.TunaSessionClient
-	ch1 := make(chan string)
-	ch2 := make(chan string)
+// go test -v -run=TestListener
+func TestListener(t *testing.T) {
+	var listenSess *ts.TunaSessionClient
+	ch := make(chan string, 1)
 
 	go func() {
-		listenSess = StartTunaListner(2, ch1)
+		listenSess = StartTunaListner(2, ch)
 	}()
+
+	sessKey := <-ch
+	time.Sleep(time.Second)
+	CloseOneConn(listenSess, sessKey, "1")
+
+	<-ch
+}
+
+// go test -v -run=TestDialer
+func TestDialer(t *testing.T) {
+	bytesToSend := 8 << 20
+	var dialSess *ts.TunaSessionClient
+	ch := make(chan string, 1)
 
 	go func() {
 		// wait for Listener be ready
-		time.Sleep(8 * time.Second)
-		dialSess = StartTunaDialer(bytesToSend, ch2)
+		time.Sleep(2 * time.Second)
+		dialSess = StartTunaDialer(bytesToSend, ch)
 	}()
 
-	sessKey1 := <-ch1
-	time.Sleep(8 * time.Second)
-	CloseOneConn(listenSess, sessKey1, "1")
-
-	sessKey2 := <-ch2
+	sessKey := <-ch
 	time.Sleep(time.Second)
-	CloseOneConn(dialSess, sessKey2, "1")
+	CloseOneConn(dialSess, sessKey, "1")
 
-	ch := make(chan int)
 	<-ch
 }

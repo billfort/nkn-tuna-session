@@ -503,35 +503,41 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 		return nil, err
 	}
 
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	if config.DialTimeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(config.DialTimeout)*time.Millisecond)
-		defer cancel()
+	// FXB
+	c.dialConfig = config
+	var pubAddrs *PubAddrs
+	for {
+		pubAddrs, err = c.RequestPubAddrs(remoteAddr)
+		if err != nil {
+			log.Printf("%v DialWithConfig, RequestPubAddrs err: %v\n", c.Name, err)
+			time.Sleep(2 * time.Second)
+		} else {
+			log.Printf("%v DialWithConfig, RequestPubAddrs addr len: %v\n", c.Name, len(pubAddrs.Addrs))
+			break
+		}
 	}
+	// buf, err := json.Marshal(&Request{Action: "getPubAddr"})
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	buf, err := json.Marshal(&Request{Action: "getPubAddr"})
-	if err != nil {
-		return nil, err
-	}
+	// respChan, err := c.multiClient.Send(nkn.NewStringArray(remoteAddr), buf, nil)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	respChan, err := c.multiClient.Send(nkn.NewStringArray(remoteAddr), buf, nil)
-	if err != nil {
-		return nil, err
-	}
+	// var msg *nkn.Message
+	// select {
+	// case msg = <-respChan.C:
+	// case <-ctx.Done():
+	// 	return nil, ctx.Err()
+	// }
 
-	var msg *nkn.Message
-	select {
-	case msg = <-respChan.C:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
-	pubAddrs := &PubAddrs{}
-	err = json.Unmarshal(msg.Data, pubAddrs)
-	if err != nil {
-		return nil, err
-	}
+	// pubAddrs := &PubAddrs{}
+	// err = json.Unmarshal(msg.Data, pubAddrs)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	sessionID, err := nkn.RandomBytes(SessionIDSize)
 	if err != nil {
@@ -546,14 +552,22 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if config.DialTimeout > 0 {
+				ctx, cancel = context.WithTimeout(ctx, time.Duration(config.DialTimeout)*time.Millisecond)
+				defer cancel()
+			}
+
 			netConn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port))
 			if err != nil {
-				log.Printf("Dial error: %v", err)
+				log.Printf("%v Dial error: %v", c.Name, err)
 				return
 			}
 
 			// FXB
-			fmt.Printf("DialWithConfig new conn local %v, remote %v\n", netConn.LocalAddr(), netConn.RemoteAddr())
+			fmt.Printf("%v DialWithConfig new conn local %v, remote %v\n", c.Name, netConn.LocalAddr(), netConn.RemoteAddr())
 
 			conn := newConn(netConn)
 
@@ -620,6 +634,13 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 				c.handleConn(conn, sessKey, i)
 			}(conn, i)
 		}
+	}
+
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if config.DialTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(config.DialTimeout)*time.Millisecond)
+		defer cancel()
 	}
 
 	err = sess.Dial(ctx)
