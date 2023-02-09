@@ -739,6 +739,8 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		c.RUnlock()
 		if conn == nil {
 			return fmt.Errorf("%v Ncp.session sendWith, conn %s is nil", c.Name, connID)
+		} else {
+			// fmt.Printf("%v Ncp.session sendWith use conn %v now\n", c.Name, connID)
 		}
 		buf, err := c.encode(buf, remoteAddr)
 		if err != nil {
@@ -747,8 +749,8 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		err = writeMessage(conn, buf, writeTimeout)
 		if err != nil {
 			log.Printf("%v Ncp.session conn %v Write message error:%v\n", c.Name, connID, err)
-			conn.Close()
-			return ncp.ErrConnClosed
+			// conn.Close()
+			return err // ncp.ErrConnClosed
 		}
 		return nil
 	}), config)
@@ -783,25 +785,23 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 	c.connCount[sessKey]++
 	c.Unlock()
 
-	defer func() {
-		// FXB
-		fmt.Printf("%v conn %v closed\n", c.Name, i)
+	defer c.handleConnClosed(conn, sessKey, i)
+	// defer func() {
+	// 	c.Lock()
+	// 	c.connCount[sessKey]--
+	// 	shouldClose := c.connCount[sessKey] == 0
+	// 	if shouldClose {
+	// 		delete(c.sessions, sessKey)
+	// 		delete(c.sessionConns, sessKey)
+	// 		delete(c.connCount, sessKey)
+	// 		c.closedSessionKey.Add(sessKey, nil, gocache.DefaultExpiration)
+	// 	}
+	// 	c.Unlock()
 
-		c.Lock()
-		c.connCount[sessKey]--
-		shouldClose := c.connCount[sessKey] == 0
-		if shouldClose {
-			delete(c.sessions, sessKey)
-			delete(c.sessionConns, sessKey)
-			delete(c.connCount, sessKey)
-			c.closedSessionKey.Add(sessKey, nil, gocache.DefaultExpiration)
-		}
-		c.Unlock()
-
-		if shouldClose {
-			sess.Close()
-		}
-	}()
+	// 	if shouldClose {
+	// 		sess.Close()
+	// 	}
+	// }()
 
 	for {
 		err := c.handleMsg(conn, sess, i)
@@ -866,25 +866,26 @@ func (c *TunaSessionClient) SetName(name string) {
 // handler of connection closed exceptionally
 func (c *TunaSessionClient) handleConnClosed(conn *Conn, sessKey string, i int) {
 	c.Lock()
-	defer c.Unlock()
-
+	c.connCount[sessKey]--
+	shouldClose := c.connCount[sessKey] == 0
+	// remove closed conn
 	conns := c.sessionConns[sessKey]
-	connId := connID(i)
-	delete(conns, connId)
+	delete(conns, connID(i))
 	c.sessionConns[sessKey] = conns
+	sess := c.sessions[sessKey]
 
-	if len(conns) == 0 {
-		sess := c.sessions[sessKey]
+	if shouldClose {
 		delete(c.sessions, sessKey)
 		delete(c.sessionConns, sessKey)
+		delete(c.connCount, sessKey)
 		c.closedSessionKey.Add(sessKey, nil, gocache.DefaultExpiration)
-		if sess != nil {
-			sess.Close()
-			fmt.Printf("%v handleConnClosed, session is closed too\n", c.Name)
-		}
 	}
+	c.Unlock()
 
-	fmt.Printf("%v conn %v handleConnClosed finished\n", c.Name, i)
+	if shouldClose {
+		sess.Close()
+	}
+	fmt.Printf("%v finished handling conn %v closed\n", c.Name, i)
 }
 
 func (c *TunaSessionClient) RequestPubAddrs(remoteAddr string) (*PubAddrs, error) {

@@ -97,8 +97,10 @@ func read(sess net.Conn) error {
 	for {
 		n, err := sess.Read(b)
 		if err != nil {
+			fmt.Printf("pub.write sess.Read err: %v\n", err)
 			return err
 		}
+		fmt.Println("read ", n, "bytes", "total", bytesReceived+n, "bytes")
 		for i := 0; i < n; i++ {
 			if b[i] != byte(bytesReceived%256) {
 				return fmt.Errorf("byte %d should be %d, got %d", bytesReceived, bytesReceived%256, b[i])
@@ -134,6 +136,7 @@ func write(sess net.Conn, numBytes int) error {
 		}
 		n, err := sess.Write(b)
 		if err != nil {
+			fmt.Printf("pub.write sess.Write err: %v\n", err)
 			return err
 		}
 		if n != len(b) {

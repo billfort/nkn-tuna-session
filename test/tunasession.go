@@ -89,11 +89,10 @@ func StartTunaDialer(numBytes int, ch chan string) (tunaSess *ts.TunaSessionClie
 }
 
 func CloseOneConn(tunaSess *ts.TunaSessionClient, sessKey string, connId string) {
-	// fmt.Printf("Going to close %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
-	// conns := tunaSess.GetConns(sessKey)
-	// conn, ok := conns[connId]
-	// if ok {
-	// 	conn.Conn.Close()
-	// 	fmt.Printf("Closed %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
-	// }
+	conns := tunaSess.GetConns(sessKey)
+	conn, ok := conns[connId]
+	if ok {
+		conn.Conn.Close()
+		fmt.Printf("%v conn %v is closed by program\n", tunaSess.Name, connId)
+	}
 }
