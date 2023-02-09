@@ -11,7 +11,8 @@ var (
 )
 
 func sessionKey(remoteAddr string, sessionID []byte) string {
-	return remoteAddr + hex.EncodeToString(sessionID)
+	return hex.EncodeToString(sessionID)
+	// return remoteAddr + hex.EncodeToString(sessionID)
 }
 
 func connID(i int) string {

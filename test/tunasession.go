@@ -21,6 +21,7 @@ func StartTunaListner(numListener int, ch chan string) (tunaSess *ts.TunaSession
 	acc, wal, err := CreateAccountAndWallet(seedHex)
 	mc, err := CreateMultiClient(acc, listenerId, 2)
 	tunaSess, err = CreateTunaSession(acc, wal, mc)
+	tunaSess.SetName(listenerId)
 
 	listenerAddr = listenerId + "." + strings.SplitN(tunaSess.Addr().String(), ".", 2)[1]
 	fmt.Println("listenerAddr ", listenerAddr)
@@ -36,7 +37,7 @@ func StartTunaListner(numListener int, ch chan string) (tunaSess *ts.TunaSession
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Println(tunaSess.Addr(), "accepted a session")
+			log.Println(tunaSess.Name, "accepted a session")
 
 			sessions := tunaSess.GetSessions()
 			for key := range sessions {
@@ -61,13 +62,14 @@ func StartTunaDialer(numBytes int, ch chan string) (tunaSess *ts.TunaSessionClie
 	mc, _ := CreateMultiClient(acc, dialerId, 2)
 
 	tunaSess, _ = CreateTunaSession(acc, wal, mc)
+	tunaSess.SetName(dialerId)
 
 	diaConfig := CreateDialConfig(5000)
 	ncpSess, err := tunaSess.DialWithConfig(listenerAddr, diaConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(tunaSess.Addr(), "dialed a session")
+	log.Println(tunaSess.Name, "dialed a session")
 	sessions := tunaSess.GetSessions()
 	for key := range sessions {
 		ch <- key
@@ -90,11 +92,11 @@ func StartTunaDialer(numBytes int, ch chan string) (tunaSess *ts.TunaSessionClie
 }
 
 func CloseOneConn(tunaSess *ts.TunaSessionClient, sessKey string, connId string) {
-	fmt.Printf("Going to close %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
-	conns := tunaSess.GetConns(sessKey)
-	conn, ok := conns[connId]
-	if ok {
-		conn.Conn.Close()
-		fmt.Printf("Closed %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
-	}
+	// fmt.Printf("Going to close %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
+	// conns := tunaSess.GetConns(sessKey)
+	// conn, ok := conns[connId]
+	// if ok {
+	// 	conn.Conn.Close()
+	// 	fmt.Printf("Closed %v session %v conn %v\n", tunaSess.Addr(), sessKey, connId)
+	// }
 }

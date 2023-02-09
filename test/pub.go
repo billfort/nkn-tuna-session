@@ -109,7 +109,7 @@ func read(sess net.Conn) error {
 		// 	log.Println("Received", bytesReceived, "bytes", float64(bytesReceived)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
 		// }
 		if bytesReceived == numBytes {
-			log.Println("Finished receiving", bytesReceived, "bytes")
+			log.Println("Finish receiving", bytesReceived, "bytes")
 			return nil
 		}
 	}
@@ -143,7 +143,7 @@ func write(sess net.Conn, numBytes int) error {
 		// 	log.Println("Sent", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
 		// }
 		if bytesSent == numBytes {
-			log.Println("Sent", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
+			log.Println("Finish sending", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
 		}
 	}
 	return nil
