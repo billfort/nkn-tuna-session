@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	ts "github.com/nknorg/nkn-tuna-session"
 )
@@ -81,6 +82,7 @@ func StartTunaDialer(numBytes int, ch chan string) (tunaSess *ts.TunaSessionClie
 		} else {
 			fmt.Printf("Finished reading, close ncp.session now\n")
 		}
+		time.Sleep(2 * time.Second) // wait for reader to read data.
 		ncpSess.Close()
 		ch <- "end"
 	}()
@@ -89,10 +91,12 @@ func StartTunaDialer(numBytes int, ch chan string) (tunaSess *ts.TunaSessionClie
 }
 
 func CloseOneConn(tunaSess *ts.TunaSessionClient, sessKey string, connId string) {
+	tunaSess.RLock()
 	conns := tunaSess.GetConns(sessKey)
 	conn, ok := conns[connId]
+	tunaSess.RUnlock()
 	if ok {
-		conn.Conn.Close()
+		conn.Close()
 		fmt.Printf("%v conn %v is closed by program\n", tunaSess.Name, connId)
 	}
 }

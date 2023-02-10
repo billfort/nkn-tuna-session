@@ -75,7 +75,7 @@ func CreateTunaSession(account *nkn.Account, wallet *nkn.Wallet, mc *nkn.MultiCl
 }
 
 func read(sess net.Conn) error {
-	// timeStart := time.Now()
+	timeStart := time.Now()
 
 	b := make([]byte, 4)
 	n := 0
@@ -95,21 +95,22 @@ func read(sess net.Conn) error {
 	b = make([]byte, 1024)
 	bytesReceived := 0
 	for {
+		// fmt.Printf("pub.sess.Read begin read ....\n")
 		n, err := sess.Read(b)
+		// fmt.Printf("pub.sess.Read %v bytes, total %v bytes\n", n, bytesReceived)
 		if err != nil {
-			fmt.Printf("pub.write sess.Read err: %v\n", err)
+			fmt.Printf("pub.sess.Read err: %v\n", err)
 			return err
 		}
-		fmt.Println("read ", n, "bytes", "total", bytesReceived+n, "bytes")
 		for i := 0; i < n; i++ {
 			if b[i] != byte(bytesReceived%256) {
 				return fmt.Errorf("byte %d should be %d, got %d", bytesReceived, bytesReceived%256, b[i])
 			}
 			bytesReceived++
 		}
-		// if ((bytesReceived - n) * 10 / numBytes) != (bytesReceived * 10 / numBytes) {
-		// 	log.Println("Received", bytesReceived, "bytes", float64(bytesReceived)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
-		// }
+		if ((bytesReceived - n) * 10 / numBytes) != (bytesReceived * 10 / numBytes) {
+			log.Println("Received", bytesReceived, "bytes", float64(bytesReceived)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
+		}
 		if bytesReceived == numBytes {
 			log.Println("Finish receiving", bytesReceived, "bytes")
 			return nil
@@ -142,6 +143,7 @@ func write(sess net.Conn, numBytes int) error {
 		if n != len(b) {
 			return fmt.Errorf("sent %d instead of %d bytes", n, len(b))
 		}
+		// fmt.Printf("pub.sess.Write %v bytes, total %v bytes\n", n, bytesSent)
 		// if ((bytesSent - n) * 10 / numBytes) != (bytesSent * 10 / numBytes) {
 		// 	log.Println("Sent", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
 		// }
