@@ -13,7 +13,7 @@ func TestListener(t *testing.T) {
 	ch := make(chan string, 1)
 
 	go func() {
-		listenSess = StartTunaListner(2, ch)
+		listenSess = StartTunaListner(ch)
 	}()
 
 	sessKey := <-ch

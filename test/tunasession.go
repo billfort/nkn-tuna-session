@@ -15,16 +15,16 @@ const dialerId = "Alice"
 
 const remoteAddr = "Bob.be285ff9330122cea44487a9618f96603fde6d37d5909ae1c271616772c349fe"
 
-func StartTunaListner(numListener int, ch chan string) (tunaSess *ts.TunaSessionClient) {
-	acc, wal, err := CreateAccountAndWallet(seedHex)
-	mc, err := CreateMultiClient(acc, listenerId, 2)
-	tunaSess, err = CreateTunaSession(acc, wal, mc)
+func StartTunaListner(ch chan string) (tunaSess *ts.TunaSessionClient) {
+	acc, wal, _ := CreateAccountAndWallet(seedHex)
+	mc, _ := CreateMultiClient(acc, listenerId, 2)
+	tunaSess, _ = CreateTunaSession(acc, wal, mc)
 	tunaSess.SetName(listenerId)
 
 	listenerAddr := listenerId + "." + strings.SplitN(tunaSess.Addr().String(), ".", 2)[1]
 	fmt.Println("listenerAddr ", listenerAddr)
 
-	err = tunaSess.Listen(nil)
+	err := tunaSess.Listen(nil)
 	if err != nil {
 		log.Fatal("tunaSess.Listen ", err)
 	}
