@@ -15,3 +15,5 @@ require (
 )
 
 replace github.com/nknorg/tuna => ../tuna
+
+replace github.com/nknorg/ncp-go => ../ncp-go

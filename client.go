@@ -232,6 +232,17 @@ func (c *TunaSessionClient) Listen(addrsRe *nkngomobile.StringArray) error {
 // RotateOne create a new tuna exit and replace the i-th one. New connections
 // accepted will use new tuna exit, existing connections will not be affected.
 func (c *TunaSessionClient) RotateOne(i int) error {
+	// Close old one first to avoid dialer get old one public address
+	c.Lock()
+	oldTe := c.tunaExits[i]
+	c.tunaExits[i] = nil
+	c.Unlock()
+
+	if oldTe != nil {
+		oldTe.SetLinger(-1)
+		go oldTe.Close()
+	}
+
 	c.RLock()
 	te, err := c.newTunaExit(i)
 	if err != nil {
@@ -245,14 +256,8 @@ func (c *TunaSessionClient) RotateOne(i int) error {
 	<-te.OnConnect.C
 
 	c.Lock()
-	oldTe := c.tunaExits[i]
 	c.tunaExits[i] = te
 	c.Unlock()
-
-	if oldTe != nil {
-		oldTe.SetLinger(-1)
-		go oldTe.Close()
-	}
 
 	return nil
 }
@@ -288,6 +293,10 @@ func (c *TunaSessionClient) getPubAddrs(includePrice bool) *PubAddrs {
 	}
 	addrs := make([]*PubAddr, 0, len(c.tunaExits))
 	for _, tunaExit := range c.tunaExits {
+		// FXB
+		if tunaExit == nil {
+			continue
+		}
 		ip := tunaExit.GetReverseIP().String()
 		ports := tunaExit.GetReverseTCPPorts()
 		if len(ip) == 0 || len(ports) == 0 {
@@ -304,9 +313,16 @@ func (c *TunaSessionClient) getPubAddrs(includePrice bool) *PubAddrs {
 		}
 		addrs = append(addrs, addr)
 		// FXB
-		fmt.Printf("%v getPubAddrs: %+v \n", c.Name, addr)
+		fmt.Printf("%v tuna pub addr: %+v \n", c.Name, addr)
 	}
-	return &PubAddrs{Addrs: addrs}
+
+	// FXB
+	pubAddrs := &PubAddrs{}
+	if len(addrs) == len(c.listeners) { // only return when number of listeners tuna exists are ready
+		pubAddrs = &PubAddrs{Addrs: addrs}
+	}
+
+	return pubAddrs
 }
 
 func (c *TunaSessionClient) GetPubAddrs() *PubAddrs {
@@ -362,8 +378,10 @@ func (c *TunaSessionClient) listenNet(i int) {
 
 		conn := newConn(netConn)
 
+		done := make(chan struct{})
 		go func(conn *Conn) {
 			defer conn.Close()
+			defer close(done)
 
 			buf, err := readMessage(conn, maxAddrSize)
 			if err != nil {
@@ -442,6 +460,12 @@ func (c *TunaSessionClient) listenNet(i int) {
 
 			c.handleConn(conn, sessKey, i)
 		}(conn)
+
+		<-done
+		fmt.Printf("%v conn %v handleConn exit, we create a new one\n", c.Name, i)
+		if !c.IsClosed() {
+			c.RotateOne(i)
+		}
 	}
 }
 
@@ -505,6 +529,8 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 
 	// FXB
 	c.dialConfig = config
+	c.dialRemoteAddr = remoteAddr
+
 	var pubAddrs *PubAddrs
 	for {
 		pubAddrs, err = c.RequestPubAddrs(remoteAddr)
@@ -544,79 +570,90 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 		return nil, err
 	}
 
-	var lock sync.Mutex
+	// var lock sync.Mutex
 	var wg sync.WaitGroup
-	conns := make(map[string]*Conn, len(pubAddrs.Addrs))
-	dialer := &net.Dialer{}
+	// conns := make(map[string]*Conn, len(pubAddrs.Addrs))
+	// dialer := &net.Dialer{}
 	for i := range pubAddrs.Addrs {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 
-			ctx := context.Background()
-			var cancel context.CancelFunc
-			if config.DialTimeout > 0 {
-				ctx, cancel = context.WithTimeout(ctx, time.Duration(config.DialTimeout)*time.Millisecond)
-				defer cancel()
-			}
-
-			netConn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port))
+			_, err := c.dialAConn(sessionID, i, pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port)
 			if err != nil {
-				log.Printf("%v Dial error: %v", c.Name, err)
+				fmt.Printf("%v c.dialAConn return err:%v\n", c.Name, err)
 				return
 			}
 
-			// FXB
-			fmt.Printf("%v DialWithConfig new conn local %v, remote %v\n", c.Name, netConn.LocalAddr(), netConn.RemoteAddr())
+			// ctx := context.Background()
+			// var cancel context.CancelFunc
+			// if config.DialTimeout > 0 {
+			// 	ctx, cancel = context.WithTimeout(ctx, time.Duration(config.DialTimeout)*time.Millisecond)
+			// 	defer cancel()
+			// }
 
-			conn := newConn(netConn)
+			// netConn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port))
+			// if err != nil {
+			// 	log.Printf("%v Dial error: %v", c.Name, err)
+			// 	return
+			// }
 
-			err = writeMessage(conn, []byte(c.addr.String()), time.Duration(config.DialTimeout)*time.Millisecond)
-			if err != nil {
-				log.Printf("%v Conn %v Write message error: %v\n", c.Name, i, err)
-				conn.Close()
-				return
-			}
+			// // FXB
+			// fmt.Printf("%v DialWithConfig new conn local %v, remote %v\n", c.Name, netConn.LocalAddr(), netConn.RemoteAddr())
 
-			metadata := &pb.SessionMetadata{
-				Id: sessionID,
-			}
-			metadataRaw, err := proto.Marshal(metadata)
-			if err != nil {
-				log.Printf("%v conn %v Encode session metadata error: %v", c.Name, i, err)
-				conn.Close()
-				return
-			}
+			// conn := newConn(netConn)
 
-			buf, err := c.encode(metadataRaw, remoteAddr)
-			if err != nil {
-				log.Printf("%v conn %v Encode message error: %v", c.Name, i, err)
-				conn.Close()
-				return
-			}
+			// err = writeMessage(conn, []byte(c.addr.String()), time.Duration(config.DialTimeout)*time.Millisecond)
+			// if err != nil {
+			// 	log.Printf("%v Conn %v Write message error: %v\n", c.Name, i, err)
+			// 	conn.Close()
+			// 	return
+			// }
 
-			err = writeMessage(conn, buf, time.Duration(config.DialTimeout)*time.Millisecond)
-			if err != nil {
-				log.Printf("%v Conn %v write message error: %v", c.Name, i, err)
-				conn.Close()
-				return
-			}
+			// metadata := &pb.SessionMetadata{
+			// 	Id: sessionID,
+			// }
+			// metadataRaw, err := proto.Marshal(metadata)
+			// if err != nil {
+			// 	log.Printf("%v conn %v Encode session metadata error: %v", c.Name, i, err)
+			// 	conn.Close()
+			// 	return
+			// }
 
-			lock.Lock()
-			conns[connID(i)] = conn
-			lock.Unlock()
+			// buf, err := c.encode(metadataRaw, remoteAddr)
+			// if err != nil {
+			// 	log.Printf("%v conn %v Encode message error: %v", c.Name, i, err)
+			// 	conn.Close()
+			// 	return
+			// }
+
+			// err = writeMessage(conn, buf, time.Duration(config.DialTimeout)*time.Millisecond)
+			// if err != nil {
+			// 	log.Printf("%v Conn %v write message error: %v", c.Name, i, err)
+			// 	conn.Close()
+			// 	return
+			// }
+
+			// lock.Lock()
+			// conns[connID(i)] = conn
+			// lock.Unlock()
 		}(i)
 	}
 	wg.Wait()
 
+	sessKey := sessionKey(remoteAddr, sessionID)
+	conns := c.sessionConns[sessKey]
 	connIDs := make([]string, 0, len(conns))
-	for i := 0; i < len(pubAddrs.Addrs); i++ {
-		if _, ok := conns[connID(i)]; ok {
-			connIDs = append(connIDs, connID(i))
-		}
+	for id := range conns {
+		connIDs = append(connIDs, id)
 	}
 
-	sessKey := sessionKey(remoteAddr, sessionID)
+	// for i := 0; i < len(pubAddrs.Addrs); i++ {
+	// 	if _, ok := conns[connID(i)]; ok {
+	// 		connIDs = append(connIDs, connID(i))
+	// 	}
+	// }
+
 	sess, err := c.newSession(remoteAddr, sessionID, connIDs, config.SessionConfig)
 	if err != nil {
 		return nil, err
@@ -624,14 +661,26 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 
 	c.Lock()
 	c.sessions[sessKey] = sess
-	c.sessionConns[sessKey] = conns
+	// c.sessionConns[sessKey] = conns
 	c.Unlock()
 
 	for i := 0; i < len(pubAddrs.Addrs); i++ {
 		if conn, ok := conns[connID(i)]; ok {
 			go func(conn *Conn, i int) {
 				defer conn.Close()
-				c.handleConn(conn, sessKey, i)
+				for {
+					c.handleConn(conn, sessKey, i)
+					if c.IsClosed() {
+						break
+					}
+					fmt.Printf("%v conn %v disconnected, reconnect now\n", c.Name, i)
+					pubAddrs, err := c.RequestPubAddrs(c.dialRemoteAddr)
+					if err == nil && len(pubAddrs.Addrs) >= i+1 {
+						conn, _ = c.dialAConn(sessionID, i, pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port)
+					} else {
+						time.Sleep(2 * time.Second)
+					}
+				}
 			}(conn, i)
 		}
 	}
@@ -738,9 +787,7 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 		conn := c.sessionConns[sessKey][connID]
 		c.RUnlock()
 		if conn == nil {
-			return fmt.Errorf("%v Ncp.session sendWith, conn %s is nil", c.Name, connID)
-		} else {
-			// fmt.Printf("%v Ncp.session sendWith use conn %v now\n", c.Name, connID)
+			return fmt.Errorf("%v Ncp.session sendWith, conn %v is nil, buf len is %v\n", c.Name, connID, len(buf))
 		}
 		buf, err := c.encode(buf, remoteAddr)
 		if err != nil {
@@ -752,6 +799,7 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 			// conn.Close()
 			return err // ncp.ErrConnClosed
 		}
+
 		return nil
 	}), config)
 }
@@ -771,6 +819,7 @@ func (c *TunaSessionClient) handleMsg(conn *Conn, sess *ncp.Session, i int) erro
 	if err != nil {
 		return err
 	}
+	// fmt.Printf("%v conn %v receive %v len message\n", c.Name, connID(i), len(buf))
 
 	return nil
 }
@@ -819,7 +868,8 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 				}
 			default:
 			}
-			log.Printf("%v conn %v handle msg error: %v", c.Name, i, err)
+			log.Printf("%v conn %v handle msg error: %v\n", c.Name, i, err)
+			log.Printf("%v conn %v handle conn exit now\n", c.Name, i)
 			return
 		}
 	}
@@ -878,14 +928,13 @@ func (c *TunaSessionClient) handleConnClosed(conn *Conn, sessKey string, i int) 
 		delete(c.sessions, sessKey)
 		delete(c.sessionConns, sessKey)
 		delete(c.connCount, sessKey)
+		sess.Close()
+		fmt.Printf("%v session is closed\n", c.Name)
 		c.closedSessionKey.Add(sessKey, nil, gocache.DefaultExpiration)
 	}
 	c.Unlock()
 
-	if shouldClose {
-		sess.Close()
-	}
-	fmt.Printf("%v finished handling conn %v closed\n", c.Name, i)
+	fmt.Printf("%v finished handling conn %v closed, conncount %v \n", c.Name, i, c.connCount[sessKey])
 }
 
 func (c *TunaSessionClient) RequestPubAddrs(remoteAddr string) (*PubAddrs, error) {
@@ -920,6 +969,10 @@ func (c *TunaSessionClient) RequestPubAddrs(remoteAddr string) (*PubAddrs, error
 	err = json.Unmarshal(msg.Data, pubAddrs)
 	if err != nil {
 		return nil, err
+	} else {
+		for _, addr := range pubAddrs.Addrs {
+			fmt.Printf("get pub addr ip %v, port %v\n", addr.IP, addr.Port)
+		}
 	}
 
 	return pubAddrs, nil
@@ -982,14 +1035,6 @@ func (c *TunaSessionClient) dialAConn(sessionID []byte, i int, ip string, port u
 	conns[connID(i)] = conn
 	c.sessionConns[sessKey] = conns
 	c.Unlock()
-	return conn, nil
-}
 
-func (c *TunaSessionClient) RenewConnection(i int) (conn *Conn, err error) {
-	fmt.Printf("%v RenewConnection conn %v\n", c.Name, i)
-	pubAddrs, err := c.RequestPubAddrs(c.dialRemoteAddr)
-	if err != nil || len(pubAddrs.Addrs) < i {
-		return nil, err
-	}
-	return c.dialAConn(c.dialSessionID, i, pubAddrs.Addrs[i].IP, pubAddrs.Addrs[i].Port)
+	return conn, nil
 }
