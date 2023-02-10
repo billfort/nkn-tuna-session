@@ -143,10 +143,12 @@ func write(sess net.Conn, numBytes int) error {
 		if n != len(b) {
 			return fmt.Errorf("sent %d instead of %d bytes", n, len(b))
 		}
-		// fmt.Printf("pub.sess.Write %v bytes, total %v bytes\n", n, bytesSent)
-		// if ((bytesSent - n) * 10 / numBytes) != (bytesSent * 10 / numBytes) {
-		// 	log.Println("Sent", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
-		// }
+
+		if ((bytesSent - n) * 10 / numBytes) != (bytesSent * 10 / numBytes) {
+			log.Println("Sent", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
+			// slow down for testing
+			time.Sleep(3 * time.Second)
+		}
 		if bytesSent == numBytes {
 			log.Println("Finish sending", bytesSent, "bytes", float64(bytesSent)/math.Pow(2, 20)/(float64(time.Since(timeStart))/float64(time.Second)), "MB/s")
 		}
