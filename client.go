@@ -670,7 +670,7 @@ func (c *TunaSessionClient) DialWithConfig(remoteAddr string, config *nkn.DialCo
 				defer conn.Close()
 				for {
 					c.handleConn(conn, sessKey, i)
-					if c.IsClosed() {
+					if c.IsClosed() || sess.IsClosed() {
 						break
 					}
 					fmt.Printf("%v conn %v disconnected, reconnect now\n", c.Name, i)
@@ -782,7 +782,7 @@ func (c *TunaSessionClient) IsClosed() bool {
 
 func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, connIDs []string, config *ncp.Config) (*ncp.Session, error) {
 	sessKey := sessionKey(remoteAddr, sessionID)
-	return ncp.NewSession(c.addr, nkn.NewClientAddr(remoteAddr), connIDs, nil, (func(connID, _ string, buf []byte, writeTimeout time.Duration) error {
+	return ncp.NewSession(c.addr, nkn.NewClientAddr(remoteAddr), connIDs, connIDs, (func(connID, _ string, buf []byte, writeTimeout time.Duration) error {
 		c.RLock()
 		conn := c.sessionConns[sessKey][connID]
 		c.RUnlock()
@@ -805,6 +805,9 @@ func (c *TunaSessionClient) newSession(remoteAddr string, sessionID []byte, conn
 }
 
 func (c *TunaSessionClient) handleMsg(conn *Conn, sess *ncp.Session, i int) error {
+	// if i == 0 && c.dialConfig == nil {
+	// 	fmt.Printf("conn 0 before readMessage\n")
+	// }
 	buf, err := readMessage(conn, uint32(c.config.SessionConfig.MTU+maxSessionMsgOverhead))
 	if err != nil {
 		return err
@@ -814,7 +817,9 @@ func (c *TunaSessionClient) handleMsg(conn *Conn, sess *ncp.Session, i int) erro
 	if err != nil {
 		return err
 	}
-
+	if i == 0 && c.dialConfig == nil {
+		fmt.Printf("conn 0 before ReceiveWith\n")
+	}
 	err = sess.ReceiveWith(connID(i), connID(i), buf)
 	if err != nil {
 		return err
@@ -855,6 +860,7 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 	for {
 		err := c.handleMsg(conn, sess, i)
 		if err != nil {
+			log.Printf("%v conn %v handle msg error: %v\n", c.Name, i, err)
 			if err == io.EOF || err == ncp.ErrSessionClosed || sess.IsClosed() {
 				// FXB
 				fmt.Printf("%v conn %v handleMsg err %v\n", c.Name, i, err)
@@ -868,7 +874,6 @@ func (c *TunaSessionClient) handleConn(conn *Conn, sessKey string, i int) {
 				}
 			default:
 			}
-			log.Printf("%v conn %v handle msg error: %v\n", c.Name, i, err)
 			log.Printf("%v conn %v handle conn exit now\n", c.Name, i)
 			return
 		}
