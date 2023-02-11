@@ -18,7 +18,7 @@ func TestListener(t *testing.T) {
 
 	sessKey := <-ch
 	time.Sleep(2 * time.Second)
-	CloseOneConn(listenSess, sessKey, "0")
+	CloseOneConn(listenSess, sessKey, "1")
 
 	<-ch
 }
@@ -37,7 +37,7 @@ func TestDialer(t *testing.T) {
 
 	sessKey := <-ch
 	time.Sleep(10 * time.Second)
-	CloseOneConn(dialSess, sessKey, "1")
+	CloseOneConn(dialSess, sessKey, "6")
 
 	<-ch
 }
