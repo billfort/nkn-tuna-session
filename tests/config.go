@@ -3,10 +3,10 @@ package tests
 import "time"
 
 const (
-	bytesToSend      int = 10 << 10
+	bytesToSend      int = 5 << 20
 	numTcpListener   int = 4
 	numUdpListener   int = 1
-	numUdpDialers    int = 2
+	numUdpDialers    int = 4
 	bufSize          int = 100
 	udpWriteInterval     = 1 * time.Millisecond
 
